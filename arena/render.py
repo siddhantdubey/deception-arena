@@ -188,8 +188,21 @@ class Renderer:
         if seat in st["votes"]:
             d.text((x, y + 130), f"votes {st['votes'][seat]}", font=font(22), fill=TEXT)
 
+    def source_decision(self, ev):
+        """Coup challenge and block outcomes are logged without a decision id; the decision behind them is the
+        actor's latest 'challenge' / 'block_*' response event before this one."""
+        if ev["kind"] not in ("challenge_result", "block"):
+            return None
+        want = "challenge" if ev["kind"] == "challenge_result" else "block_"
+        for e in reversed(self.events[:ev["seq"]]):
+            if e["kind"] == "response" and e["actor"] == ev["actor"] and e["data"]["response"].startswith(want):
+                return e["data"]["decision_id"]
+        return None
+
     def notes_for(self, ev):
         ids = ev["data"].get("decision_ids") or ([ev["data"]["decision_id"]] if ev["data"].get("decision_id") is not None else [])
+        if not ids and self.source_decision(ev) is not None:
+            ids = [self.source_decision(ev)]
         out = []
         for i in ids:
             dec = self.decisions.get(i)
