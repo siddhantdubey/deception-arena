@@ -12,9 +12,7 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
-import tempfile
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -360,33 +358,40 @@ class Renderer:
 
 
 def render_game(gdir, out_path, fps=30):
+    """Each frame is written to ffmpeg as raw RGB, repeated for exactly round(hold * fps) video frames."""
     r = Renderer(gdir)
     if r.meta.get("status") != "finished":
         raise SystemExit(f"{gdir}: game not finished ({r.meta.get('status')})")
-    tmp = tempfile.mkdtemp(prefix="arena-frames-")
+    plan = [("title", r.title_card, 6.0)]
+    for ev in r.events:
+        plan.append((f"e{ev['seq']:04d}", (lambda ev=ev: r.frame(ev)), r.duration(ev, r.notes_for(ev))))
+    plan.append(("end", r.end_card, 8.0))
+    ff = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+                           "-s", f"{W}x{H}", "-r", str(fps), "-i", "-", "-c:v", "libx264", "-preset", "medium",
+                           "-crf", "20", "-tune", "stillimage", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                           out_path], stdin=subprocess.PIPE)
+    frames_log, n_total = [], 0
     try:
-        items = [("title", r.title_card(), 6.0)]
-        for ev in r.events:
-            items.append((f"e{ev['seq']:04d}", r.frame(ev), r.duration(ev, r.notes_for(ev))))
-        items.append(("end", r.end_card(), 8.0))
-        lst = os.path.join(tmp, "list.txt")
-        with open(lst, "w") as f:
-            for name, im, dur in items:
-                p = os.path.join(tmp, f"{name}.png")
-                im.save(p)
-                f.write(f"file '{p}'\nduration {dur}\n")
-            f.write(f"file '{os.path.join(tmp, items[-1][0] + '.png')}'\n")
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst,
-                        "-fps_mode", "cfr", "-r", str(fps), "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-                        "-tune", "stillimage", "-pix_fmt", "yuv420p", "-movflags", "+faststart", out_path],
-                       check=True)
-        total = sum(dur for _, _, dur in items)
-        with open(os.path.splitext(out_path)[0] + ".frames.json", "w") as f:
-            json.dump({"game": r.meta["game_id"], "seconds": round(total, 1),
-                       "frames": [{"name": n, "seconds": dur} for n, _, dur in items]}, f, indent=0)
-        return total
+        for name, make, hold in plan:
+            n = max(1, round(hold * fps))
+            buf = make().tobytes()
+            for _ in range(n):
+                ff.stdin.write(buf)
+            frames_log.append({"name": name, "start_s": round(n_total / fps, 3), "frames": n})
+            n_total += n
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        ff.stdin.close()
+        if ff.wait() != 0:
+            raise RuntimeError("ffmpeg failed")
+    got = int(subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_frames", "-show_entries",
+                              "stream=nb_read_frames", "-of", "csv=p=0", out_path],
+                             capture_output=True, text=True, check=True).stdout.strip())
+    if got != n_total:
+        raise RuntimeError(f"{out_path}: encoded {got} frames, planned {n_total}")
+    with open(os.path.splitext(out_path)[0] + ".frames.json", "w") as f:
+        json.dump({"game": r.meta["game_id"], "fps": fps, "frames": n_total, "seconds": round(n_total / fps, 2),
+                   "items": frames_log}, f, indent=0)
+    return n_total / fps
 
 
 def still(gdir, seq, out_png):
