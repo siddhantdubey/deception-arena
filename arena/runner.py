@@ -62,17 +62,28 @@ def build_game(spec):
     return game
 
 
-def code_revision():
+def _code_identity():
+    """Git revision and a hash of the package source, taken once when the runner is imported, so they
+    describe the code this process is actually running even if files change on disk mid-run."""
+    import glob
     import subprocess
     here = os.path.dirname(os.path.abspath(__file__))
+    h = hashlib.sha256()
+    for path in sorted(glob.glob(os.path.join(here, "*.py")) + glob.glob(os.path.join(here, "games", "*.py"))):
+        with open(path, "rb") as f:
+            h.update(os.path.relpath(path, here).encode() + b"\0" + f.read())
     try:
         rev = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=here, capture_output=True, text=True,
                              timeout=10).stdout.strip()
         dirty = subprocess.run(["git", "status", "--porcelain", "--", "."], cwd=here, capture_output=True,
                                text=True, timeout=10).stdout.strip()
-        return rev + ("-dirty" if dirty else "") if rev else "unknown"
+        rev = rev + ("-dirty" if dirty else "") if rev else "unknown"
     except (OSError, subprocess.SubprocessError):
-        return "unknown"
+        rev = "unknown"
+    return {"code_revision": rev, "code_sha256": h.hexdigest()[:16]}
+
+
+CODE = _code_identity()
 
 
 def _now():
@@ -132,8 +143,7 @@ class Runner:
         meta = {**spec, "status": "running", "started": _now(), "rules_version": game.rules_version,
                 "template_hash": template_hash(game.rules),
                 "models": {seat: {"label": label, **models[label]} for seat, label in spec["seats"].items()},
-                "cli_versions": {b: cli_version(b) for b in ("claude_cli", "codex_cli")},
-                "code_revision": code_revision()}
+                "cli_versions": {b: cli_version(b) for b in ("claude_cli", "codex_cli")}, **CODE}
         self._write_meta(gdir, meta)
         try:
             result = game.play()
