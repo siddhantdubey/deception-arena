@@ -1,0 +1,20 @@
+{
+ "run_id": "pilot-20261107",
+ "models": {
+  "Opus": {"backend": "claude_cli", "model": "claude-opus-5-5", "effort": "low",
+           "display": "Claude Opus 5.5", "color": "#ff7a1a"},
+  "Sol": {"backend": "codex_cli", "model": "gpt-6.1-sol", "effort": "low",
+          "display": "GPT-6.1 Sol", "color": "#3fa7ff"},
+  "Argon": {"backend": "gemini_api", "model": "gemini-4-argon", "effort": "low",
+            "display": "Gemini 4 Argon", "color": "#b46cff"}
+ },
+ "games": {"coup": 6, "onuw": 6, "spyfall": 6},
+ "budget_usd": {"gemini_api": 3.0},
+ "prices": {
+  "_note": "USD per million tokens, list price. gemini-4-argon introductory price through 2026-11-30 (third-party coverage); thinking tokens billed as output.",
+  "gemini-4-argon": {"input": 2.0, "cached_input": 0.1, "output": 10.0}
+ },
+ "concurrency": {"claude_cli": 2, "codex_cli": 4, "gemini_api": 4},
+ "timeout": 180,
+ "max_consecutive_aborts": 3
+}
