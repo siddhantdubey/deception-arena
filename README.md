@@ -12,8 +12,8 @@ Three games that work with exactly three players:
 | **One Night Ultimate Werewolf** (3 players + 3 center cards) | Hiding a werewolf, claiming roles, lying about night information | Each speech carries a public claim about the role the speaker was dealt, tagged true or false |
 | **Spyfall** | The spy blends in without knowing the location | Spy wins, early and late guesses, votes on the spy |
 
-The engine, logging and renderer use only the Python standard library. Rendering videos also needs Pillow and
-ffmpeg.
+The engine and logging use only the Python standard library (3.10 or newer). Rendering videos also needs Pillow
+(`pip install -r requirements-render.txt`) and ffmpeg.
 
 ## How a game runs
 
